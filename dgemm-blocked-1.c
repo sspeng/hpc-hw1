@@ -18,27 +18,21 @@ const char *dgemm_desc = "Simple blocked dgemm.";
 static void do_block(int lda, const int M, const int N, const int K, double **A, double **B, double **C)
 {
     encode_t **input = (encode_t **)A;
-    printf("in do block %d %d %d %d\n", M, N, K, fl(M));
+    encode_t **output = (encode_t **)C;
     encode_t res[N][fl(M)];
-    for(int i = 0; i < N; i++){
-        for(int j = 0; j < fl(M); j++){
-            res[i][j] = zero();
-        }
-    }
+    // for(int i = 0; i < N; i++){
+    //     for(int j = 0; j < fl(M); j++){
+    //         output[i][j] = zero();
+    //     }
+    // }
     for(int k = 0; k < K; k++){
         for(int j = 0; j < N; j++){
+            double tmp = B[j][k]; 
             for(int i = 0; i < fl(M); i++){
-                res[j][i] = add_256(res[j][i], multiply_256(input[k][i], B[j][k]));
+                output[j][i] = add_256(output[j][i], multiply_256(input[k][i], tmp));
             }
         }
     }
-    for(int i = 0; i < N; i++){
-        for(int j = 0; j < fl(M); j++){
-            store(&C[i][j * sizeof(encode_t)], res[i][j]);
-            //printf("%.1f\n", C[i][j * sizeof(encode_t)]);
-        }
-    }
-    printf("do_block over\n");
 }
 
 /* This routine performs a dgemm operation
@@ -64,54 +58,25 @@ void square_dgemm(int lda, double *A, double *B, double *C)
                 int M = min(BLOCK_SIZE, lda - i);
                 int N = min(BLOCK_SIZE, lda - j);
                 int K = min(BLOCK_SIZE, lda - k);
-                // double a[8];
-                // double b = 3.0;
-                // double c[8];
-                // posix_memalign((void **)&a, 64, sizeof(double) * 8);
-                // posix_memalign((void **)&c, 64, sizeof(double) * 8);
-                // a[0] = a[1] = a[2] = a[3] = 4.0;
-                // c[0] = c[1] = c[2] = c[3] = 0.0;
-                // encode_t* d = (encode_t *)a;
-                // printf("%f %f %f %f %d %d\n", c[0],c[1],c[2],c[3], (int)sizeof(double), (int)sizeof(encode_t));
-                // printf("1\n");
-                // encode_t f = multiply_256(d[0], b);
-                // _mm256_stream_pd(c, f);   
-                // printf("%f %f %f %f\n", c[0],c[1],c[2],c[3]);
-
+        
                 /* Perform individual block dgemm */
                 for(int h = 0; h < K; h++){
                     memmove(AA[h], A + i + (k + h) * lda, sizeof(double) * M);
-                    memset(AA[h] + M, 0, sizeof(double) * (floor(M) - M));
+                    memset(AA[h] + M, 0, sizeof(double) * (min(floor(M), BLOCK_SIZE) - M));
                 }
                 for(int h = 0; h < N; h++){
                     memmove(BB[h], B + k + (j + h) * lda, sizeof(double) * K);
-                    memset(CC[h], 0, sizeof(double) * floor(M));
+                    memmove(CC[h], C + i + (j + h) * lda, sizeof(double) * M);
+                    memset(CC[h] + M, 0, sizeof(double) * (floor(M) - M));
                 }
-                printf("floor M %d\n", floor(M));
-                // printf("1");
-                // for(int ii = 0; ii < M; ii++){
-                //     printf("\n");
-                //     for(int jj = 0; jj < K; jj++){
-                //         printf("%.1f ",AA[jj][ii]);
-                //     }
-                // }
-                //printf("do_block\n");
                 do_block(lda, M, N, K, AA, BB, CC);
-                printf("2\n");
                 for(int h = 0; h < N; h++){
-                    for(int hh = 0; hh < M; hh++){
-                        C[i + hh + (j + h) * lda] += CC[h][hh];
-                    }
+                    memmove(C + i + (j + h) * lda, CC[h], sizeof(double) * M);
                 }
-                break;
             }
-    printf("123123\n");
     for(int i = 0; i < BLOCK_SIZE; i++){
-        free(AA[i]);
-        printf("123123\n");
-        free(BB[i]);
-        printf("123123\n");
-        //free(CC[i]);
-        printf("123123\n");
+        if(AA[i] != NULL) free(AA[i]);
+        if(BB[i] != NULL) free(BB[i]);
+        if(CC[i] != NULL) free(CC[i]);
     }
 }
